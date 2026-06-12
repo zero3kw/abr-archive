@@ -1,22 +1,28 @@
-name: Dayly Download ABR CSVs
+name: Daily Download ABR CSVs
 
 on:
   schedule:
-    - cron: '0 7 * * *'
+    - cron: '0 7 * * *'  # 07:00 UTC = 16:00 JST
   workflow_dispatch:
+
+# cron と手動実行が重なっても push 衝突しないよう直列化（実行は中断しない）
+concurrency:
+  group: daily-download
+  cancel-in-progress: false
 
 jobs:
   update:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     permissions:
       contents: write  # GITHUB_TOKENでpushできるように
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # pushのために必要
+          fetch-depth: 1  # push 前に fetch して追従するので浅いcloneで十分
 
       - name: Run download script
         run: |
@@ -28,11 +34,25 @@ jobs:
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
 
-          if [[ -n $(git status --porcelain) ]]; then
-            git add .
-            git commit -m "update: $(date '+%Y-%m-%d')"
-            git pull --rebase
-            git push origin HEAD
-          else
+          if [[ -z $(git status --porcelain) ]]; then
             echo "No changes to commit."
+            exit 0
           fi
+
+          git add .
+          git commit -m "update: $(date '+%Y-%m-%d')"
+
+          # 競合時に備えて fetch→rebase→push を数回リトライ
+          for i in 1 2 3 4 5; do
+            git fetch origin "$GITHUB_REF_NAME"
+            git rebase "origin/$GITHUB_REF_NAME" || { git rebase --abort; sleep 5; continue; }
+            if git push origin "HEAD:$GITHUB_REF_NAME"; then
+              echo "Pushed on attempt $i."
+              exit 0
+            fi
+            echo "Push failed (attempt $i), retrying..."
+            sleep 5
+          done
+
+          echo "Failed to push after retries." >&2
+          exit 1

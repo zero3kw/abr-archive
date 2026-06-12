@@ -35,6 +35,7 @@ bash ./download.sh  132.31s user 55.10s system 126% cpu 2:28.49 total
 ./mt_town_pos:       47 files
 ```
 - 町字より下位のデータはサイズが大きいので、町字までをアーカイブ
+- `post_code` は郵便番号データ（ArcGIS hosting の `abr_post_code.zip`）を展開してアーカイブ
 
 # 出典
 - [アドレス・ベース・レジストリ（デジタル庁）](https://www.digital.go.jp/policies/base_registry_address/)
